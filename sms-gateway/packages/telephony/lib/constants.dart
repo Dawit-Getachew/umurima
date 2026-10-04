@@ -22,6 +22,7 @@ const GET_DATA_NETWORK_TYPE = "getDataNetworkType";
 const GET_PHONE_TYPE = "getPhoneType";
 const GET_SIM_OPERATOR = "getSimOperator";
 const GET_SIM_OPERATOR_NAME = "getSimOperatorName";
+const GET_LINE1_NUMBER = "getLine1Number";
 const GET_SIM_STATE = "getSimState";
 const IS_NETWORK_ROAMING = "isNetworkRoaming";
 const GET_SIGNAL_STRENGTH = "getSignalStrength";

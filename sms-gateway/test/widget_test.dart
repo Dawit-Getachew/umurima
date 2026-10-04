@@ -11,6 +11,7 @@ void main() {
     expect(find.text('Umurima AI Gateway'), findsOneWidget);
     expect(find.text('Gateway stopped'), findsOneWidget);
     expect(find.text('Start gateway'), findsOneWidget);
+    expect(find.text("Set this phone's number"), findsOneWidget);
     expect(find.text('Checking AI backend...'), findsOneWidget);
     expect(find.text('Test a question'), findsOneWidget);
     expect(find.text('No farmer messages yet'), findsOneWidget);

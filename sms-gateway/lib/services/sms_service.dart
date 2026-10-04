@@ -15,57 +15,103 @@ class SmsService {
     QueueService? queueService,
     ApiClient? apiClient,
     Telephony? telephony,
-  })  : _queueService = queueService ?? QueueService.instance,
-        _apiClient = apiClient ?? ApiClient(),
-        _telephony = telephony ?? Telephony.instance;
+  }) : _queueService = queueService ?? QueueService.instance,
+       _apiClient = apiClient ?? ApiClient(),
+       _telephony = telephony ?? Telephony.instance;
 
   final QueueService _queueService;
   final ApiClient _apiClient;
   final Telephony _telephony;
   final ReplyDispatcher _replyDispatcher = ReplyDispatcher();
 
+  /// A permission dialog the user never answers, or a result another plugin
+  /// swallows, must not leave the gateway half-started forever.
+  static const Duration _promptTimeout = Duration(seconds: 90);
+
   Future<bool> requestPermissions() async {
     if (!Platform.isAndroid) {
       return false;
     }
 
-    final permissionsGranted = await _telephony.requestSmsPermissions;
-    return permissionsGranted ?? false;
+    try {
+      final permissionsGranted = await _telephony.requestSmsPermissions.timeout(
+        _promptTimeout,
+      );
+      return permissionsGranted ?? false;
+    } catch (e) {
+      // The plugin reports a refusal as a PlatformException, not as false.
+      debugPrint('SMS permission request failed: $e');
+      return false;
+    }
   }
 
   Future<bool> requestBatteryOptimizationExemption() async {
-    final status = await Permission.ignoreBatteryOptimizations.status;
-    if (status.isGranted) {
-      return true;
+    try {
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      if (status.isGranted) {
+        return true;
+      }
+      final requested = await Permission.ignoreBatteryOptimizations
+          .request()
+          .timeout(_promptTimeout);
+      return requested.isGranted;
+    } catch (e) {
+      debugPrint('Battery optimization request failed: $e');
+      return false;
     }
-
-    final requested = await Permission.ignoreBatteryOptimizations.request();
-    return requested.isGranted;
   }
 
-  Future<void> startListening({
+  /// This SIM's own number, or null. Carriers often do not store it on the SIM,
+  /// in which case the operator enters it on the dashboard.
+  Future<String?> simNumber() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final number = (await _telephony.line1Number)?.trim() ?? '';
+      return number.isEmpty ? null : number;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The SIM's operator name, for example "MTN Rwanda", or null.
+  Future<String?> simOperatorName() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final name = (await _telephony.simOperatorName)?.trim() ?? '';
+      return name.isEmpty ? null : name;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Starts receiving and answering SMS.
+  ///
+  /// Throws when SMS permission is refused, since nothing works without it. The
+  /// battery exemption and the background service are best effort; the returned
+  /// warnings name the ones that failed, so the operator can see them.
+  Future<List<String>> startListening({
     required Function(String sender, String message) onMessageReceived,
   }) async {
     if (!Platform.isAndroid) {
-      debugPrint('SMS listener requested on a non-Android platform; skipping.');
-      return;
+      throw UnsupportedError('The SMS gateway runs on Android only.');
     }
 
-    final hasPermission = await requestPermissions();
-
-    if (!hasPermission) {
-      debugPrint('SMS permission was not granted.');
-      return;
+    if (!await requestPermissions()) {
+      throw StateError('SMS permission was not granted.');
     }
 
-    final batteryExempt = await requestBatteryOptimizationExemption();
-    if (!batteryExempt) {
-      debugPrint(
-        'Battery optimization exemption was not granted; background SMS delivery may be unreliable on Android 8+.',
+    final warnings = <String>[];
+    if (!await requestBatteryOptimizationExemption()) {
+      warnings.add(
+        'battery optimization is on, so Android may pause the gateway',
       );
     }
-
-    await startBackgroundService();
+    if (!await startBackgroundService()) {
+      warnings.add(
+        'the background service did not start, so SMS are answered '
+        'only while the app is open',
+      );
+    }
 
     _telephony.listenIncomingSms(
       onNewMessage: (SmsMessage message) {
@@ -82,6 +128,7 @@ class SmsService {
       onBackgroundMessage: backgroundMessageHandler,
       listenInBackground: true,
     );
+    return warnings;
   }
 
   /// Stops background delivery.

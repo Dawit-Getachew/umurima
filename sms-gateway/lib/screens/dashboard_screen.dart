@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/api_service.dart';
 import '../services/background_service.dart';
+import '../services/gateway_settings.dart';
 import '../services/queue_service.dart';
 import '../services/sms_service.dart';
 
@@ -20,19 +21,43 @@ class AnswerSource {
   static AnswerSource of(String? source) {
     switch (source) {
       case 'faq':
-        return const AnswerSource('Verified answer', Icons.verified, Color(0xFF2E7D32));
+        return const AnswerSource(
+          'Verified answer',
+          Icons.verified,
+          Color(0xFF2E7D32),
+        );
       case 'cache':
         return const AnswerSource('Cached', Icons.bolt, Color(0xFF00838F));
       case 'ai':
-        return const AnswerSource('AI answer', Icons.auto_awesome, Color(0xFF3949AB));
+        return const AnswerSource(
+          'AI answer',
+          Icons.auto_awesome,
+          Color(0xFF3949AB),
+        );
       case 'triage':
-        return const AnswerSource('Urgent: sent to expert', Icons.warning_amber, Color(0xFFC62828));
+        return const AnswerSource(
+          'Urgent: sent to expert',
+          Icons.warning_amber,
+          Color(0xFFC62828),
+        );
       case 'offline':
-        return const AnswerSource('From notes, offline', Icons.cloud_off, Color(0xFFEF6C00));
+        return const AnswerSource(
+          'From notes, offline',
+          Icons.cloud_off,
+          Color(0xFFEF6C00),
+        );
       case 'greeting':
-        return const AnswerSource('Welcome', Icons.waving_hand, Color(0xFF6D4C41));
+        return const AnswerSource(
+          'Welcome',
+          Icons.waving_hand,
+          Color(0xFF6D4C41),
+        );
       case 'busy':
-        return const AnswerSource('Asked to retry', Icons.hourglass_empty, Color(0xFF757575));
+        return const AnswerSource(
+          'Asked to retry',
+          Icons.hourglass_empty,
+          Color(0xFF757575),
+        );
       default:
         return const AnswerSource('Reply', Icons.sms, Color(0xFF546E7A));
     }
@@ -57,6 +82,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   bool _isListening = false;
   bool _toggling = false;
+  String? _gatewayNumber; // the number farmers text
+  String? _simOperator;
   bool? _backendOnline; // null while the first check runs
   Map<String, dynamic> _health = const {};
   List<Map<String, dynamic>> _messages = const [];
@@ -69,11 +96,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!widget.live) return;
     _refresh();
     _checkBackend();
+    _loadSim();
     _resumeIfRunning();
     // The background isolate answers SMS while this screen is open, so poll the
     // queue to show its work as it happens.
-    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) => _refresh());
-    _healthTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkBackend());
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => _refresh(),
+    );
+    _healthTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _checkBackend(),
+    );
   }
 
   @override
@@ -99,7 +133,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     setState(() {
       _backendOnline = result.success;
-      _health = result.data is Map ? Map<String, dynamic>.from(result.data as Map) : const {};
+      _health = result.data is Map
+          ? Map<String, dynamic>.from(result.data as Map)
+          : const {};
     });
   }
 
@@ -108,7 +144,62 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _resumeIfRunning() async {
     if (!await isBackgroundServiceRunning() || !mounted) return;
     setState(() => _isListening = true);
-    await _smsService.startListening(onMessageReceived: (_, _) => _refresh());
+    try {
+      await _smsService.startListening(onMessageReceived: (_, _) => _refresh());
+    } catch (e) {
+      debugPrint('Could not re-attach the SMS listener: $e');
+    }
+  }
+
+  /// The number to show farmers: one the operator saved, else the SIM's own
+  /// number when the carrier stored it, else the build default.
+  Future<void> _loadSim() async {
+    final saved = await GatewaySettings.savedNumber();
+    final detected = saved == null ? await _smsService.simNumber() : null;
+    final operatorName = await _smsService.simOperatorName();
+    if (!mounted) return;
+    setState(() {
+      _gatewayNumber =
+          saved ??
+          detected ??
+          (GatewaySettings.buildDefault.isEmpty
+              ? null
+              : GatewaySettings.buildDefault);
+      _simOperator = operatorName;
+    });
+  }
+
+  Future<void> _editNumber() async {
+    final controller = TextEditingController(text: _gatewayNumber ?? '+250');
+    final number = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("This gateway's number"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(
+            helperText: 'The number farmers send their questions to.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (number == null || number.trim().isEmpty) return;
+    await GatewaySettings.saveNumber(number);
+    if (mounted) setState(() => _gatewayNumber = number.trim());
   }
 
   Future<void> _toggleGateway() async {
@@ -117,18 +208,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (_isListening) {
         _smsService.stopListening();
         await stopBackgroundService();
-        setState(() => _isListening = false);
+        if (mounted) setState(() => _isListening = false);
         _snack('Gateway stopped. Farmers\' SMS will not be answered.');
         return;
       }
-      if (!await _smsService.requestPermissions()) {
-        _snack('SMS permission is needed to receive and answer farmers.');
-        return;
-      }
-      await startBackgroundService();
-      await _smsService.startListening(onMessageReceived: (_, _) => _refresh());
+      final warnings = await _smsService.startListening(
+        onMessageReceived: (_, _) => _refresh(),
+      );
+      if (!mounted) return;
       setState(() => _isListening = true);
-      _snack('Gateway running. Farmers can now send SMS to this phone.');
+      _snack(
+        warnings.isEmpty
+            ? 'Gateway running. Farmers can now text this phone.'
+            : 'Gateway running, but ${warnings.join('; ')}.',
+      );
+      _loadSim(); // with SMS permission granted, the SIM number may now be readable
+    } catch (e) {
+      _snack('Could not start the gateway: $e');
     } finally {
       if (mounted) setState(() => _toggling = false);
     }
@@ -142,11 +238,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _retry(Map<String, dynamic> item) async {
     final id = item['id'] as int?;
     if (id == null) return;
-    await QueueService.instance.markIncomingPending(id, 'Retry requested by operator');
+    await QueueService.instance.markIncomingPending(
+      id,
+      'Retry requested by operator',
+    );
     await _refresh();
-    _snack(_isListening
-        ? 'Queued. The gateway retries within 15 seconds.'
-        : 'Queued. Start the gateway to send it.');
+    _snack(
+      _isListening
+          ? 'Queued. The gateway retries within 15 seconds.'
+          : 'Queued. Start the gateway to send it.',
+    );
   }
 
   Future<void> _askTestQuestion() async {
@@ -161,9 +262,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
     );
-    final result = await _api.uploadIncoming(
-      {'sender': '+250700000000', 'body': question.trim()},
-    );
+    final result = await _api.uploadIncoming({
+      'sender': '+250700000000',
+      'body': question.trim(),
+    });
     if (!mounted) return;
     Navigator.of(context).pop();
 
@@ -172,7 +274,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final reply = result.success
         ? (data['message']?.toString() ?? 'No reply text')
         : 'Backend unreachable: ${result.message}';
-    final notes = (data['sources'] is List) ? (data['sources'] as List).join(', ') : '';
+    final parts = result.success
+        ? _partsOf(data['messages'])
+        : const <String>[];
+    final bodies = parts.isEmpty ? <String>[reply] : parts;
+    final notes = (data['sources'] is List)
+        ? (data['sources'] as List).join(', ')
+        : '';
 
     await showDialog<void>(
       context: context,
@@ -183,40 +291,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Farmer: ${question.trim()}',
-                  style: const TextStyle(fontStyle: FontStyle.italic)),
+              Text(
+                'Farmer: ${question.trim()}',
+                style: const TextStyle(fontStyle: FontStyle.italic),
+              ),
               const SizedBox(height: 12),
-              _ReplyBubble(text: reply, source: result.success ? source : null),
+              _ReplyBubbles(
+                parts: bodies,
+                source: result.success ? source : null,
+              ),
               const SizedBox(height: 8),
-              Text('${reply.length} characters, ${_segments(reply)} SMS',
-                  style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                bodies.length > 1
+                    ? '${bodies.length} separate SMS: '
+                          '${bodies.map((b) => '${b.length} characters').join(', ')}'
+                    : '${reply.length} characters, ${_segments(reply)} SMS',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               if (notes.isNotEmpty)
-                Text('Based on notes: $notes', style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  'Based on notes: $notes',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               const SizedBox(height: 4),
-              Text('Test only: no SMS was sent.', style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                'Test only: no SMS was sent.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
         ],
       ),
     );
     _checkBackend();
   }
 
-  static int _segments(String text) => text.length <= 160 ? 1 : (text.length / 153).ceil();
+  static int _segments(String text) =>
+      text.length <= 160 ? 1 : (text.length / 153).ceil();
+
+  static List<String> _partsOf(dynamic value) {
+    if (value is! List || value.length < 2) return const <String>[];
+    return value.map((part) => part.toString()).toList();
+  }
 
   List<Map<String, dynamic>> get _visible {
     return _messages.where((m) {
       final status = m['status'] as String? ?? '';
       final matches = switch (_filter) {
         'replied' => status == 'replied',
-        'waiting' => status == 'pending_upload' || status == 'uploading' || status == 'uploaded',
+        'waiting' =>
+          status == 'pending_upload' ||
+              status == 'uploading' ||
+              status == 'uploaded',
         'failed' => status == 'failed',
         _ => true,
       };
-      return matches && (_search.isEmpty || (m['sender'] ?? '').toString().contains(_search));
+      return matches &&
+          (_search.isEmpty || (m['sender'] ?? '').toString().contains(_search));
     }).toList();
   }
 
@@ -259,13 +396,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
               listening: _isListening,
               busy: _toggling,
               onToggle: _toggleGateway,
+              number: _gatewayNumber,
+              operatorName: _simOperator,
+              onEditNumber: _editNumber,
             ),
             const SizedBox(height: 12),
             _BackendCard(online: _backendOnline, health: _health),
             const SizedBox(height: 12),
             Row(
               children: [
-                _StatTile(label: 'Received', value: _messages.length, color: scheme.primary),
+                _StatTile(
+                  label: 'Received',
+                  value: _messages.length,
+                  color: scheme.primary,
+                ),
                 _StatTile(
                   label: 'Answered',
                   value: _count((s) => s == 'replied'),
@@ -273,7 +417,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 _StatTile(
                   label: 'Waiting',
-                  value: _count((s) => s == 'pending_upload' || s == 'uploading' || s == 'uploaded'),
+                  value: _count(
+                    (s) =>
+                        s == 'pending_upload' ||
+                        s == 'uploading' ||
+                        s == 'uploaded',
+                  ),
                   color: const Color(0xFFEF6C00),
                 ),
                 _StatTile(
@@ -284,7 +433,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            Text('Farmer conversations', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Farmer conversations',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -317,7 +469,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (visible.isEmpty)
               const _EmptyState()
             else
-              for (final item in visible) _ConversationCard(item: item, onRetry: () => _retry(item)),
+              for (final item in visible)
+                _ConversationCard(item: item, onRetry: () => _retry(item)),
           ],
         ),
       ),
@@ -326,11 +479,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class _GatewayCard extends StatelessWidget {
-  const _GatewayCard({required this.listening, required this.busy, required this.onToggle});
+  const _GatewayCard({
+    required this.listening,
+    required this.busy,
+    required this.onToggle,
+    required this.number,
+    required this.operatorName,
+    required this.onEditNumber,
+  });
 
   final bool listening;
   final bool busy;
   final VoidCallback onToggle;
+  final String? number;
+  final String? operatorName;
+  final VoidCallback onEditNumber;
 
   @override
   Widget build(BuildContext context) {
@@ -338,44 +501,106 @@ class _GatewayCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
           children: [
-            CircleAvatar(
-              backgroundColor: color.withValues(alpha: 0.12),
-              child: Icon(listening ? Icons.sensors : Icons.sensors_off, color: color),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            _status(context, color),
+            const Divider(height: 24),
+            InkWell(
+              onTap: onEditNumber,
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
                 children: [
-                  Text(
-                    listening ? 'Gateway running' : 'Gateway stopped',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: color, fontSize: 16),
+                  Icon(
+                    Icons.sim_card_outlined,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    listening
-                        ? 'Farmer SMS are answered automatically, even with the app closed.'
-                        : 'Start it to answer farmers who SMS this phone.',
-                    style: Theme.of(context).textTheme.bodySmall,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          number == null
+                              ? "Set this phone's number"
+                              : 'Farmers text',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        if (number != null)
+                          Text(
+                            GatewaySettings.format(number!),
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        if (operatorName != null)
+                          Text(
+                            operatorName!,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ],
+                    ),
                   ),
+                  const Icon(Icons.edit_outlined, size: 18),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            busy
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                : FilledButton(
-                    onPressed: onToggle,
-                    style: listening
-                        ? FilledButton.styleFrom(backgroundColor: const Color(0xFFC62828))
-                        : null,
-                    child: Text(listening ? 'Stop' : 'Start gateway'),
-                  ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _status(BuildContext context, Color color) {
+    return Row(
+      children: [
+        CircleAvatar(
+          backgroundColor: color.withValues(alpha: 0.12),
+          child: Icon(
+            listening ? Icons.sensors : Icons.sensors_off,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                listening ? 'Gateway running' : 'Gateway stopped',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                listening
+                    ? 'Farmer SMS are answered automatically, even with the app closed.'
+                    : 'Start it to answer farmers who SMS this phone.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        busy
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : FilledButton(
+                onPressed: onToggle,
+                style: listening
+                    ? FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFC62828),
+                      )
+                    : null,
+                child: Text(listening ? 'Stop' : 'Start gateway'),
+              ),
+      ],
     );
   }
 }
@@ -414,7 +639,10 @@ class _BackendCard extends StatelessWidget {
                 Icon(Icons.circle, size: 12, color: color),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(status, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
+                  child: Text(
+                    status,
+                    style: TextStyle(fontWeight: FontWeight.w600, color: color),
+                  ),
                 ),
               ],
             ),
@@ -435,7 +663,10 @@ class _BackendCard extends StatelessWidget {
                   runSpacing: 6,
                   children: [
                     for (final entry in bySource.entries)
-                      _SourceChip(source: AnswerSource.of(entry.key), count: entry.value),
+                      _SourceChip(
+                        source: AnswerSource.of(entry.key),
+                        count: entry.value,
+                      ),
                   ],
                 ),
               ],
@@ -468,7 +699,11 @@ class _SourceChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             count == null ? source.label : '${source.label}: $count',
-            style: TextStyle(fontSize: 12, color: source.color, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 12,
+              color: source.color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -477,7 +712,11 @@ class _SourceChip extends StatelessWidget {
 }
 
 class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value, required this.color});
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   final String label;
   final int value;
@@ -492,8 +731,14 @@ class _StatTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Column(
             children: [
-              Text('$value',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+              Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
               const SizedBox(height: 2),
               Text(label, style: Theme.of(context).textTheme.bodySmall),
             ],
@@ -516,7 +761,9 @@ class _ReplyBubble extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
+        color: Theme.of(
+          context,
+        ).colorScheme.primaryContainer.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -533,6 +780,29 @@ class _ReplyBubble extends StatelessWidget {
   }
 }
 
+/// One bubble per SMS; the source chip sits under the last one.
+class _ReplyBubbles extends StatelessWidget {
+  const _ReplyBubbles({required this.parts, this.source});
+
+  final List<String> parts;
+  final AnswerSource? source;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < parts.length; i++) ...[
+          if (i > 0) const SizedBox(height: 6),
+          _ReplyBubble(
+            text: parts[i],
+            source: i == parts.length - 1 ? source : null,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _ConversationCard extends StatelessWidget {
   const _ConversationCard({required this.item, required this.onRetry});
 
@@ -544,7 +814,10 @@ class _ConversationCard extends StatelessWidget {
     if (parsed == null) return '';
     String two(int n) => n.toString().padLeft(2, '0');
     final now = DateTime.now();
-    final sameDay = parsed.year == now.year && parsed.month == now.month && parsed.day == now.day;
+    final sameDay =
+        parsed.year == now.year &&
+        parsed.month == now.month &&
+        parsed.day == now.day;
     final clock = '${two(parsed.hour)}:${two(parsed.minute)}';
     return sameDay ? clock : '${two(parsed.day)}/${two(parsed.month)} $clock';
   }
@@ -554,7 +827,9 @@ class _ConversationCard extends StatelessWidget {
     final status = item['status'] as String? ?? 'unknown';
     Map<String, dynamic> payload = const {};
     try {
-      payload = jsonDecode(item['payload'] as String? ?? '{}') as Map<String, dynamic>;
+      payload =
+          jsonDecode(item['payload'] as String? ?? '{}')
+              as Map<String, dynamic>;
     } catch (_) {}
     final reply = payload['reply'] is Map ? payload['reply'] as Map : null;
     final error = item['last_error'] as String?;
@@ -579,19 +854,28 @@ class _ConversationCard extends StatelessWidget {
                 const Icon(Icons.person_outline, size: 18),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(item['sender']?.toString() ?? 'unknown',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    item['sender']?.toString() ?? 'unknown',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
-                Text(_time(item['created_at'] as String?),
-                    style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  _time(item['created_at'] as String?),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(item['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
+            Text(
+              item['body']?.toString() ?? '',
+              style: const TextStyle(fontSize: 15),
+            ),
             const SizedBox(height: 8),
             if (reply != null)
-              _ReplyBubble(
-                text: reply['message']?.toString() ?? '',
+              _ReplyBubbles(
+                parts: _DashboardScreenState._partsOf(reply['parts']).isEmpty
+                    ? <String>[reply['message']?.toString() ?? '']
+                    : _DashboardScreenState._partsOf(reply['parts']),
                 source: AnswerSource.of(reply['source'] as String?),
               ),
             if (reply == null && error != null && status != 'replied')
@@ -601,8 +885,14 @@ class _ConversationCard extends StatelessWidget {
               children: [
                 Icon(statusIcon, size: 16, color: statusColor),
                 const SizedBox(width: 4),
-                Text(statusLabel,
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12)),
+                Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
                 const Spacer(),
                 if (status == 'failed')
                   TextButton.icon(
@@ -628,7 +918,11 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 32),
       child: Column(
         children: [
-          Icon(Icons.forum_outlined, size: 48, color: Theme.of(context).colorScheme.outline),
+          Icon(
+            Icons.forum_outlined,
+            size: 48,
+            color: Theme.of(context).colorScheme.outline,
+          ),
           const SizedBox(height: 8),
           const Text('No farmer messages yet'),
           const SizedBox(height: 4),
@@ -682,11 +976,15 @@ class _TestQuestionDialogState extends State<_TestQuestionDialog> {
               minLines: 2,
               maxLines: 4,
               decoration: const InputDecoration(
-                hintText: 'Type as a farmer would SMS, in English or Kinyarwanda',
+                hintText:
+                    'Type as a farmer would SMS, in English or Kinyarwanda',
                 border: OutlineInputBorder(),
               ),
             ),
-            const Text('Examples', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text(
+              'Examples',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 4),
             Wrap(
               spacing: 6,
@@ -703,7 +1001,10 @@ class _TestQuestionDialogState extends State<_TestQuestionDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_controller.text),
           child: const Text('Ask'),

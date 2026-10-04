@@ -229,6 +229,18 @@ class SmsController(private val context: Context) {
         return getTelephonyManager().simOperatorName
     }
 
+    // The SIM's own number. Many carriers never write it to the SIM, so this is often
+    // empty. Needs READ_SMS or READ_PHONE_NUMBERS; returns "" when not allowed.
+    @SuppressLint("MissingPermission", "HardwareIds")
+    @Suppress("DEPRECATION")
+    fun getLine1Number(): String {
+        return try {
+            getTelephonyManager().line1Number ?: ""
+        } catch (e: SecurityException) {
+            ""
+        }
+    }
+
     fun getSimState(): Int {
         return getTelephonyManager().simState
     }

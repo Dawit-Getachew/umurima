@@ -462,6 +462,13 @@ class Telephony {
       _foregroundChannel.invokeMethod<String>(GET_SIM_OPERATOR_NAME);
 
   ///
+  /// The SIM's own phone number, or an empty string when the carrier did not store
+  /// it on the SIM (common) or READ_SMS / READ_PHONE_NUMBERS is not granted.
+  ///
+  Future<String?> get line1Number =>
+      _foregroundChannel.invokeMethod<String>(GET_LINE1_NUMBER);
+
+  ///
   /// Returns a constant indicating the state of the default SIM card.
   ///
   /// Returns:

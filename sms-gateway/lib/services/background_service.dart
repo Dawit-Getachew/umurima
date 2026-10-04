@@ -43,13 +43,19 @@ Future<bool> startBackgroundService() async {
     }
 
     // Android 13+ needs this granted before the foreground-service notification
-    // can be posted. Not fatal if refused, so don't block startup on it.
-    final status = await Permission.notification.request();
-    if (!status.isGranted) {
-      debugPrint(
-        'Notification permission not granted; the foreground service '
-        'notification may be suppressed.',
+    // can be posted. Not fatal if refused or unanswered, so never block on it.
+    try {
+      final status = await Permission.notification.request().timeout(
+        const Duration(seconds: 90),
       );
+      if (!status.isGranted) {
+        debugPrint(
+          'Notification permission not granted; the foreground service '
+          'notification may be suppressed.',
+        );
+      }
+    } catch (e) {
+      debugPrint('Notification permission request failed: $e');
     }
 
     await initializeBackgroundService();

@@ -16,6 +16,8 @@ bundle or app.
 
   Failed messages can be retried.
 - **Test a question.** Sends a question to the backend in English or Kinyarwanda and shows the reply, its SMS length and the notes it came from, without sending an SMS.
+- **Gateway number.** Shows the number farmers text, with the SIM operator. The number is read from the SIM when the carrier stored it there, which many do not; otherwise the operator enters it once, and it is saved on the phone.
+- **Urgent replies as two SMS.** When the backend splits a reply, the parts go out as numbered SMS two seconds apart: a safe step to take now, then the escalation.
 
 ## Run
 
@@ -24,6 +26,7 @@ flutter pub get
 flutter run                                                    # Android device with a SIM
 flutter run --dart-define=API_BASE_URL=http://192.168.1.10:8000   # a local backend
 flutter build apk --release   # build/app/outputs/flutter-apk/app-release.apk
+flutter build apk --release --dart-define=GATEWAY_NUMBER=+2507XXXXXXXX   # preset the number
 ```
 
 On first start, tap **Start gateway** and allow the SMS and notification permissions,
@@ -54,6 +57,9 @@ packages/telephony/             vendored fork of the telephony plugin (MIT)
   - the vendored `telephony` plugin compiles against API 36.
 
   Remove these pins after upgrading the Android Gradle plugin.
+- **Vendored plugin changes.** `packages/telephony` has two local changes:
+  - Its permission listener handles only its own request code. Upstream it consumed every other plugin's permission results, so the notification prompt shown by **Start gateway** never completed and the gateway stayed stopped.
+  - A `line1Number` getter reads the SIM's own number.
 - **Plugin tests.** The vendored plugin's own tests need `mockito` and are not part of the app's `flutter test`. Run `flutter analyze lib test` to check only the app.
 
 ## Demo

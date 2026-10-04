@@ -236,6 +236,7 @@ class SmsMethodCallHandler(
         SmsAction.GET_SIM_OPERATOR -> getSimOperator()
         SmsAction.GET_SIM_OPERATOR_NAME -> getSimOperatorName()
         SmsAction.GET_SIM_STATE -> getSimState()
+        SmsAction.GET_LINE1_NUMBER -> getLine1Number()
         SmsAction.IS_NETWORK_ROAMING -> isNetworkRoaming()
         SmsAction.GET_SIGNAL_STRENGTH -> {
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -328,6 +329,7 @@ class SmsMethodCallHandler(
       SmsAction.GET_SIM_OPERATOR,
       SmsAction.GET_SIM_OPERATOR_NAME,
       SmsAction.GET_SIM_STATE,
+      SmsAction.GET_LINE1_NUMBER,
       SmsAction.IS_NETWORK_ROAMING,
       SmsAction.GET_SIGNAL_STRENGTH,
       SmsAction.NO_SUCH_METHOD -> return true
@@ -359,7 +361,10 @@ class SmsMethodCallHandler(
     permissionsController.isRequestingPermission = false
 
     val deniedPermissions = mutableListOf<String>()
-    if (requestCode != this.requestCode && !this::action.isInitialized) {
+    // Handle only this plugin's own request. Upstream used &&, so once any telephony
+    // call had run, this listener consumed every other plugin's permission results:
+    // permission_handler's notification request then never completed.
+    if (requestCode != this.requestCode || !this::action.isInitialized) {
       return false
     }
 

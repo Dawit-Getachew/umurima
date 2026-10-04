@@ -7,7 +7,12 @@ import 'queue_service.dart';
 
 /// A reply the backend asked us to deliver over SMS.
 class SmsReply {
-  const SmsReply({required this.to, required this.message, this.source});
+  const SmsReply({
+    required this.to,
+    required this.message,
+    this.source,
+    this.parts = const <String>[],
+  });
 
   final String to;
   final String message;
@@ -15,6 +20,11 @@ class SmsReply {
   /// How the backend produced the answer (faq, cache, ai, triage, offline), shown
   /// on the dashboard. Never sent to the farmer.
   final String? source;
+
+  /// Separate SMS to send in order when the backend split its reply: an urgent
+  /// case gets a step to take now, then the escalation. Empty means [message] is
+  /// sent as one SMS.
+  final List<String> parts;
 }
 
 /// Turns a backend response into an outgoing SMS and records the outcome.
@@ -22,14 +32,14 @@ class SmsReply {
 /// Every ingest path — foreground, background isolate and the retry sweep —
 /// goes through here, so the reply handling cannot drift between them.
 class ReplyDispatcher {
-  ReplyDispatcher({
-    QueueService? queueService,
-    OutgoingSender? outgoingSender,
-  })  : _queueService = queueService ?? QueueService.instance,
-        _outgoingSender = outgoingSender ?? OutgoingSender();
+  ReplyDispatcher({QueueService? queueService, OutgoingSender? outgoingSender})
+    : _queueService = queueService ?? QueueService.instance,
+      _outgoingSender = outgoingSender ?? OutgoingSender();
 
   final QueueService _queueService;
   final OutgoingSender _outgoingSender;
+
+  static const Duration _partGap = Duration(seconds: 2);
 
   static const List<String> _messageKeys = <String>[
     'message',
@@ -86,7 +96,8 @@ class ReplyDispatcher {
       return null;
     }
 
-    final to = _firstNonEmpty(source, _recipientKeys) ??
+    final to =
+        _firstNonEmpty(source, _recipientKeys) ??
         _firstNonEmpty(decoded, _recipientKeys) ??
         fallbackTo;
     if (to.isEmpty) {
@@ -94,7 +105,18 @@ class ReplyDispatcher {
     }
 
     final answeredBy = _sourceOf(source) ?? _sourceOf(decoded);
-    return SmsReply(to: to, message: message, source: answeredBy);
+    final parts = _partsOf(source) ?? _partsOf(decoded) ?? const <String>[];
+    return SmsReply(to: to, message: message, source: answeredBy, parts: parts);
+  }
+
+  static List<String>? _partsOf(Map map) {
+    final dynamic value = map['messages'];
+    if (value is! List) return null;
+    final parts = value
+        .map((part) => part?.toString().trim() ?? '')
+        .where((part) => part.isNotEmpty)
+        .toList();
+    return parts.length > 1 ? parts : null;
   }
 
   static String? _sourceOf(Map map) {
@@ -134,22 +156,25 @@ class ReplyDispatcher {
       return false;
     }
 
+    final bodies = reply.parts.isEmpty ? <String>[reply.message] : reply.parts;
     try {
-      await _outgoingSender.sendSms(to: reply.to, message: reply.message);
+      for (var i = 0; i < bodies.length; i++) {
+        // A short gap keeps the network from delivering part 2 before part 1.
+        if (i > 0) await Future<void>.delayed(_partGap);
+        await _outgoingSender.sendSms(to: reply.to, message: bodies[i]);
+      }
     } catch (e) {
       debugPrint('ReplyDispatcher: send failed for #$savedId: $e');
       await _queueService.markIncomingFailed(savedId, 'Send failed: $e');
       return false;
     }
 
-    await _queueService.addReplyToIncoming(
-      savedId,
-      <String, dynamic>{
-        'phone_number': reply.to,
-        'message': reply.message,
-        if (reply.source != null) 'source': reply.source,
-      },
-    );
+    await _queueService.addReplyToIncoming(savedId, <String, dynamic>{
+      'phone_number': reply.to,
+      'message': reply.message,
+      if (reply.parts.isNotEmpty) 'parts': reply.parts,
+      if (reply.source != null) 'source': reply.source,
+    });
     await _queueService.markIncomingReplied(savedId);
     return true;
   }
