@@ -1,9 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:telephony/telephony.dart';
 
 class OutgoingSender {
   OutgoingSender({Telephony? telephony})
-      : _telephony = telephony ?? Telephony.instance;
+    : _telephony = telephony ?? Telephony.instance;
 
   final Telephony _telephony;
 
@@ -12,9 +13,10 @@ class OutgoingSender {
     return cleaned.replaceAll(RegExp(r'[^0-9+]'), '');
   }
 
+  /// Checks, never requests: this also runs in background isolates, where there is
+  /// no activity to show a dialog and the plugin's own request never completes.
   Future<bool> requestSendPermissions() async {
-    final granted = await _telephony.requestSmsPermissions;
-    return granted ?? false;
+    return (await Permission.sms.status).isGranted;
   }
 
   Future<void> sendSms({
@@ -50,9 +52,7 @@ class OutgoingSender {
       statusListener: onStatus == null ? null : (status) => onStatus(status),
     );
 
-    debugPrint(
-      'OutgoingSender: sent ${message.length} chars to $normalizedTo',
-    );
+    debugPrint('OutgoingSender: sent ${message.length} chars to $normalizedTo');
   }
 
   Future<void> sendByDefaultApp({

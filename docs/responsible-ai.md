@@ -50,6 +50,7 @@ Kinyarwanda and are covered by tests (`tests/test_advisor.py`).
 |---|---|
 | What is stored | Phone number, message text, reply text and a timestamp. No name, location or other identity data. |
 | Where | Backend: Postgres (`messages`, `answer_cache`). Gateway phone: a SQLite queue of received messages and replies. |
+| What the gateway can access | It receives and sends SMS. It does not declare `READ_SMS`, so it cannot read the phone's SMS inbox, and it never requests contacts or location. |
 | Why | The last six turns give the model context for follow-up questions. |
 | Who can read it | Operators with access to the backend database or the gateway phone. Nothing is sold or shared. |
 | Sent to a third party | The question, retrieved notes and recent turns are sent to OpenRouter for uncached questions. The phone number is not sent. |

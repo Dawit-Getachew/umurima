@@ -16,7 +16,7 @@ bundle or app.
 
   Failed messages can be retried.
 - **Test a question.** Sends a question to the backend in English or Kinyarwanda and shows the reply, its SMS length and the notes it came from, without sending an SMS.
-- **Gateway number.** Shows the number farmers text, with the SIM operator. The number is read from the SIM when the carrier stored it there, which many do not; otherwise the operator enters it once, and it is saved on the phone.
+- **Gateway number.** Shows the number farmers text, with the SIM operator read automatically. Android only gives the SIM's own number to apps holding a phone-number permission, and many carriers never store it on the SIM. So the operator enters it once (saved on the phone), or a build presets it.
 - **Urgent replies as two SMS.** When the backend splits a reply, the parts go out as numbered SMS two seconds apart: a safe step to take now, then the escalation.
 
 ## Run
@@ -31,6 +31,15 @@ flutter build apk --release --dart-define=GATEWAY_NUMBER=+2507XXXXXXXX   # prese
 
 On first start, tap **Start gateway** and allow the SMS and notification permissions,
 plus the battery-optimization exemption so Android does not stop the service.
+
+**Android 15+ (for example Samsung One UI 7 and later)** restricts SMS access for apps
+installed from an APK. If the SMS permission is greyed out or says *Restricted
+setting*:
+1. Open App info.
+2. Tap ⋮ at the top right and choose **Allow restricted settings**.
+3. Allow SMS.
+
+The app shows these steps, with an **Open settings** button, when SMS access is refused.
 
 ## Code layout
 
@@ -59,7 +68,8 @@ packages/telephony/             vendored fork of the telephony plugin (MIT)
   Remove these pins after upgrading the Android Gradle plugin.
 - **Vendored plugin changes.** `packages/telephony` has two local changes:
   - Its permission listener handles only its own request code. Upstream it consumed every other plugin's permission results, so the notification prompt shown by **Start gateway** never completed and the gateway stayed stopped.
-  - A `line1Number` getter reads the SIM's own number.
+  - A `line1Number` getter reads the SIM's own number, when a phone-number permission is held.
+- **Permissions.** Only `RECEIVE_SMS` and `SEND_SMS` are requested, through `permission_handler`. The gateway never reads the inbox, so `READ_SMS` is not declared.
 - **Plugin tests.** The vendored plugin's own tests need `mockito` and are not part of the app's `flutter test`. Run `flutter analyze lib test` to check only the app.
 
 ## Demo

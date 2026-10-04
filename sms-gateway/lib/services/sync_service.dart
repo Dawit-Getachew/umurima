@@ -14,9 +14,9 @@ class SyncService {
     QueueService? queueService,
     ApiClient? apiClient,
     Connectivity? connectivity,
-  })  : _queueService = queueService ?? QueueService.instance,
-        _apiClient = apiClient ?? ApiClient(),
-        _connectivity = connectivity ?? Connectivity();
+  }) : _queueService = queueService ?? QueueService.instance,
+       _apiClient = apiClient ?? ApiClient(),
+       _connectivity = connectivity ?? Connectivity();
 
   final QueueService _queueService;
   final ApiClient _apiClient;
@@ -29,7 +29,9 @@ class SyncService {
 
   void start() {
     _subscription = _connectivity.onConnectivityChanged.listen((results) async {
-      final hasNetwork = results.any((result) => result != ConnectivityResult.none);
+      final hasNetwork = results.any(
+        (result) => result != ConnectivityResult.none,
+      );
       if (hasNetwork) {
         await flushPendingIncoming();
         await _pollOnceForOutgoing();
@@ -52,7 +54,10 @@ class SyncService {
 
   Future<void> _pollOnceForOutgoing() async {
     // device id should be provided via environment or config; use a placeholder
-    const deviceId = String.fromEnvironment('DEVICE_ID', defaultValue: 'device-unknown');
+    const deviceId = String.fromEnvironment(
+      'DEVICE_ID',
+      defaultValue: 'device-unknown',
+    );
 
     final result = await _apiClient.fetchOutgoing(deviceId);
     if (!result.success || result.data == null) {
@@ -139,7 +144,7 @@ class SyncService {
       final payload = item['payload'];
       final id = item['id'] as int?;
 
-        if (payload is String && id != null) {
+      if (payload is String && id != null) {
         final Map<String, dynamic> decoded = _decodeJson(payload);
         final result = await _apiClient.uploadOutgoing(decoded);
 

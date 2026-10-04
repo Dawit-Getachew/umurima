@@ -16,19 +16,11 @@ class ApiResult {
   final dynamic data;
 
   factory ApiResult.success({int? statusCode, dynamic data}) {
-    return ApiResult(
-      success: true,
-      statusCode: statusCode,
-      data: data,
-    );
+    return ApiResult(success: true, statusCode: statusCode, data: data);
   }
 
   factory ApiResult.failure({int? statusCode, String? message}) {
-    return ApiResult(
-      success: false,
-      statusCode: statusCode,
-      message: message,
-    );
+    return ApiResult(success: false, statusCode: statusCode, message: message);
   }
 }
 
@@ -63,16 +55,29 @@ class ApiClient {
     try {
       final response = await _dio.post('/sms', data: mapped);
 
-      if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
-        return ApiResult.success(statusCode: response.statusCode, data: response.data);
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        return ApiResult.success(
+          statusCode: response.statusCode,
+          data: response.data,
+        );
       }
 
-      return ApiResult.failure(statusCode: response.statusCode, message: 'Upload incoming failed');
+      return ApiResult.failure(
+        statusCode: response.statusCode,
+        message: 'Upload incoming failed',
+      );
     } on DioException catch (error) {
       final message = _formatDioError(error);
-      return ApiResult.failure(statusCode: error.response?.statusCode, message: message);
+      return ApiResult.failure(
+        statusCode: error.response?.statusCode,
+        message: message,
+      );
     } catch (error) {
-      return ApiResult.failure(message: 'Unexpected incoming upload error: $error');
+      return ApiResult.failure(
+        message: 'Unexpected incoming upload error: $error',
+      );
     }
   }
 
@@ -86,14 +91,19 @@ class ApiClient {
       if (response.statusCode == 200) {
         return ApiResult.success(statusCode: 200, data: response.data);
       }
-      return ApiResult.failure(statusCode: response.statusCode, message: 'Health check failed');
+      return ApiResult.failure(
+        statusCode: response.statusCode,
+        message: 'Health check failed',
+      );
     } on DioException catch (error) {
       return ApiResult.failure(
         statusCode: error.response?.statusCode,
         message: _formatDioError(error),
       );
     } catch (error) {
-      return ApiResult.failure(message: 'Unexpected health check error: $error');
+      return ApiResult.failure(
+        message: 'Unexpected health check error: $error',
+      );
     }
   }
 
@@ -104,36 +114,68 @@ class ApiClient {
   /// Fetch outgoing tasks for the given device id.
   Future<ApiResult> fetchOutgoing(String deviceId) async {
     try {
-      final response = await _dio.get('/outgoing-sms', queryParameters: {'device_id': deviceId});
+      final response = await _dio.get(
+        '/outgoing-sms',
+        queryParameters: {'device_id': deviceId},
+      );
 
-      if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
-        return ApiResult.success(statusCode: response.statusCode, data: response.data);
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        return ApiResult.success(
+          statusCode: response.statusCode,
+          data: response.data,
+        );
       }
 
-      return ApiResult.failure(statusCode: response.statusCode, message: 'Fetch outgoing failed');
+      return ApiResult.failure(
+        statusCode: response.statusCode,
+        message: 'Fetch outgoing failed',
+      );
     } on DioException catch (error) {
       final message = _formatDioError(error);
-      return ApiResult.failure(statusCode: error.response?.statusCode, message: message);
+      return ApiResult.failure(
+        statusCode: error.response?.statusCode,
+        message: message,
+      );
     } catch (error) {
-      return ApiResult.failure(message: 'Unexpected fetch outgoing error: $error');
+      return ApiResult.failure(
+        message: 'Unexpected fetch outgoing error: $error',
+      );
     }
   }
 
   /// Acknowledge an outgoing task result.
   Future<ApiResult> ackOutgoing(String taskId, Map payload) async {
     try {
-      final response = await _dio.post('/outgoing-sms/$taskId/status', data: payload);
+      final response = await _dio.post(
+        '/outgoing-sms/$taskId/status',
+        data: payload,
+      );
 
-      if (response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300) {
-        return ApiResult.success(statusCode: response.statusCode, data: response.data);
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        return ApiResult.success(
+          statusCode: response.statusCode,
+          data: response.data,
+        );
       }
 
-      return ApiResult.failure(statusCode: response.statusCode, message: 'Ack outgoing failed');
+      return ApiResult.failure(
+        statusCode: response.statusCode,
+        message: 'Ack outgoing failed',
+      );
     } on DioException catch (error) {
       final message = _formatDioError(error);
-      return ApiResult.failure(statusCode: error.response?.statusCode, message: message);
+      return ApiResult.failure(
+        statusCode: error.response?.statusCode,
+        message: message,
+      );
     } catch (error) {
-      return ApiResult.failure(message: 'Unexpected ack outgoing error: $error');
+      return ApiResult.failure(
+        message: 'Unexpected ack outgoing error: $error',
+      );
     }
   }
 
@@ -166,11 +208,12 @@ class ApiClient {
           statusCode: response.statusCode,
           message: response.data is Map
               ? ((response.data['message'] ?? response.data['error']) ??
-                  'Upload failed')
+                    'Upload failed')
               : 'Upload failed',
         );
       } on DioException catch (error) {
-        final shouldRetry = error.type == DioExceptionType.connectionTimeout ||
+        final shouldRetry =
+            error.type == DioExceptionType.connectionTimeout ||
             error.type == DioExceptionType.receiveTimeout ||
             error.type == DioExceptionType.connectionError;
 

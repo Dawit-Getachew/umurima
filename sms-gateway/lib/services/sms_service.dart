@@ -10,6 +10,18 @@ import 'background_service.dart';
 import 'queue_service.dart';
 import 'reply_dispatcher.dart';
 
+/// SMS permission was refused. [permanent] means Android will not ask again, or
+/// blocks the request outright (Android 15+ restricts SMS access for apps installed
+/// from an APK), so the operator has to allow it in the app's settings.
+class SmsPermissionDenied implements Exception {
+  const SmsPermissionDenied({required this.permanent});
+
+  final bool permanent;
+
+  @override
+  String toString() => 'SMS permission was not granted';
+}
+
 class SmsService {
   SmsService({
     QueueService? queueService,
@@ -28,21 +40,25 @@ class SmsService {
   /// swallows, must not leave the gateway half-started forever.
   static const Duration _promptTimeout = Duration(seconds: 90);
 
+  /// Asks for SMS access through permission_handler, which owns its request and
+  /// reports the real status. The telephony plugin's own request can lose its
+  /// result and report a granted permission as refused.
+  Future<PermissionStatus> requestSmsPermission() async {
+    var status = await Permission.sms.status;
+    if (status.isGranted) return status;
+    try {
+      status = await Permission.sms.request().timeout(_promptTimeout);
+    } catch (e) {
+      debugPrint('SMS permission request failed: $e');
+    }
+    return status;
+  }
+
   Future<bool> requestPermissions() async {
     if (!Platform.isAndroid) {
       return false;
     }
-
-    try {
-      final permissionsGranted = await _telephony.requestSmsPermissions.timeout(
-        _promptTimeout,
-      );
-      return permissionsGranted ?? false;
-    } catch (e) {
-      // The plugin reports a refusal as a PlatformException, not as false.
-      debugPrint('SMS permission request failed: $e');
-      return false;
-    }
+    return (await requestSmsPermission()).isGranted;
   }
 
   Future<bool> requestBatteryOptimizationExemption() async {
@@ -96,8 +112,11 @@ class SmsService {
       throw UnsupportedError('The SMS gateway runs on Android only.');
     }
 
-    if (!await requestPermissions()) {
-      throw StateError('SMS permission was not granted.');
+    final sms = await requestSmsPermission();
+    if (!sms.isGranted) {
+      throw SmsPermissionDenied(
+        permanent: sms.isPermanentlyDenied || sms.isRestricted,
+      );
     }
 
     final warnings = <String>[];

@@ -75,18 +75,14 @@ class QueueService {
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
 
-    return db.insert(
-      'incoming_messages',
-      {
-        'sender': sender,
-        'body': body,
-        'status': status,
-        'payload': jsonEncode(payload),
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return db.insert('incoming_messages', {
+      'sender': sender,
+      'body': body,
+      'status': status,
+      'payload': jsonEncode(payload),
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Map<String, dynamic>>> getPendingIncomingMessages() async {
@@ -103,10 +99,7 @@ class QueueService {
   Future<List<Map<String, dynamic>>> getAllIncomingMessages() async {
     final db = await database;
 
-    return db.query(
-      'incoming_messages',
-      orderBy: 'created_at DESC',
-    );
+    return db.query('incoming_messages', orderBy: 'created_at DESC');
   }
 
   Future<int> markIncomingUploaded(int id) async {
@@ -208,7 +201,8 @@ class QueueService {
     if (rows.isEmpty) return 0;
 
     final payloadStr = rows.first['payload'] as String? ?? '{}';
-    final Map<String, dynamic> payload = jsonDecode(payloadStr) as Map<String, dynamic>;
+    final Map<String, dynamic> payload =
+        jsonDecode(payloadStr) as Map<String, dynamic>;
     payload['reply'] = reply;
 
     return db.update(
@@ -228,18 +222,14 @@ class QueueService {
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
 
-    return db.insert(
-      'outgoing_tasks',
-      {
-        'recipient': recipient,
-        'body': body,
-        'status': status,
-        'payload': jsonEncode(payload),
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return db.insert('outgoing_tasks', {
+      'recipient': recipient,
+      'body': body,
+      'status': status,
+      'payload': jsonEncode(payload),
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Map<String, dynamic>>> getPendingOutgoingTasks() async {

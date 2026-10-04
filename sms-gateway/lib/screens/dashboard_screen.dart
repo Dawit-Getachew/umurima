@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../config/api_config.dart';
 import '../services/api_service.dart';
@@ -223,11 +224,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : 'Gateway running, but ${warnings.join('; ')}.',
       );
       _loadSim(); // with SMS permission granted, the SIM number may now be readable
+    } on SmsPermissionDenied catch (e) {
+      await _showSmsPermissionHelp(permanent: e.permanent);
     } catch (e) {
       _snack('Could not start the gateway: $e');
     } finally {
       if (mounted) setState(() => _toggling = false);
     }
+  }
+
+  /// Android 15+ restricts SMS access for apps installed from an APK: the toggle is
+  /// greyed out until "Allow restricted settings" is enabled for the app.
+  Future<void> _showSmsPermissionHelp({required bool permanent}) async {
+    if (!mounted) return;
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('SMS access needed'),
+        content: Text(
+          '${permanent ? 'Android is blocking SMS access for this app. ' : ''}'
+          'The gateway cannot receive or answer farmers without it.\n\n'
+          '1. Tap Open settings.\n'
+          '2. Permissions > SMS > Allow.\n\n'
+          'If SMS is greyed out or says "Restricted setting": go back to App info, '
+          'tap the three dots at the top right, choose "Allow restricted settings", '
+          'then allow SMS. Then come back and tap Start gateway.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Open settings'),
+          ),
+        ],
+      ),
+    );
+    if (open == true) await openAppSettings();
   }
 
   void _snack(String text) {
