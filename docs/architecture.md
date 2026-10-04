@@ -25,8 +25,8 @@ sequenceDiagram
     B->>M: notes + last 6 turns + question (only on a miss)
     M-->>B: draft answer
     B->>B: sanitize, strip referrals, append contact, cache
-    B-->>G: {message, source, language, sources}
-    G->>F: SMS reply (multipart, ≤ 2 segments)
+    B-->>G: {message, messages, source, language, sources}
+    G->>F: SMS reply, or 2 SMS for urgent cases (each ≤ 2 segments)
     G->>G: mark replied
 ```
 
@@ -38,7 +38,7 @@ sequenceDiagram
 |---|---|---|
 | Normalize | `nlp.py` | Folds Unicode to ASCII, detects English or Kinyarwanda, tokenizes. Kinyarwanda farm terms (*ibigori*, *inka*, *ifumbire*, *nkongwa*...) map to the English terms used in the notes. |
 | Small talk | `advisor.py` | Greetings, thanks and empty messages get fixed replies. A first message with no crop, animal or symptom gets a request for detail. |
-| Triage | `triage.py` | Word and phrase rules. `livestock` and `human` return a fixed reply from `replies.py`. `crop` continues, but the reply must end with "report it today". Prevention questions ("how do I prevent...") are excluded. |
+| Triage | `triage.py` | Word and phrase rules. `human` returns one fixed reply. `livestock` and `crop` return two SMS: a generated safe step, then a fixed escalation from `replies.py`. Animal steps that name a drug, dose or number are replaced with a fixed step. Prevention questions ("how do I prevent...") are excluded. |
 | Verified answers | `faq.py` | 27 entries. A question matches when it hits every word group of an entry and adds at most one unrelated term, so detailed questions go to the model instead. English only. |
 | Answer cache | `cache.py` | See below. |
 | Retrieval | `rag.py` | BM25 (`rank-bm25`) over 68 paragraphs from `knowledge/*.md`. "When" questions are boosted toward the season calendar. A follow-up like "what should I do?" is searched together with the farmer's previous message. |
@@ -76,7 +76,8 @@ because of the database.
   `telephony` plugin's background handler receives SMS while the app is closed or the
   screen is locked.
 - **Sending**: always multipart, so a reply longer than one segment is never dropped
-  silently.
+  silently. When the backend splits a reply (`messages` has two entries), the parts go
+  out as separate SMS two seconds apart, numbered (1/2) and (2/2).
 - **Dashboard**: shows gateway and backend status, counts, and every conversation with
   its reply and how it was produced. Failed messages can be retried.
 

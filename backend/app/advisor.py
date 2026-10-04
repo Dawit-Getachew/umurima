@@ -27,6 +27,8 @@ RETRY_WINDOW = 120
 
 STATS: Counter = Counter()
 
+PART_LEN = 300 - len("(1/2) ")  # each part of a split reply stays within two SMS
+
 
 @dataclass
 class Answer:
@@ -34,6 +36,14 @@ class Answer:
     source: str
     language: str
     sources: list[str] = field(default_factory=list)
+    # Separate SMS, in order, when the reply is split; empty means send `text` as one.
+    parts: list[str] = field(default_factory=list)
+
+
+def _two_part(first: str, second: str, lang: str, sources: list[str]) -> Answer:
+    """An urgent reply: a step to take now, then the escalation, as numbered SMS."""
+    parts = [f"(1/2) {first}", f"(2/2) {second}"]
+    return Answer(" ".join(parts), "triage", lang, sources, parts)
 
 
 _recent: dict[tuple[str, str], tuple[float, Answer]] = {}
@@ -66,16 +76,30 @@ def _history(phone: str) -> list[dict]:
     return [{"role": m["role"], "content": _strip_footers(m["content"])} for m in past]
 
 
+def _livestock(phone: str, question: str, lang: str) -> Answer:
+    """First a safe step generated from the notes, then the fixed call-the-vet SMS.
+
+    The step is replaced by a fixed one when the model is down or names any drug,
+    dose or number, so the farmer never receives treatment advice from the model."""
+    chunks = rag.search(question)
+    step = llm.reply(question, _history(phone), chunks, lang, first_aid=True)
+    step = sanitize(llm.drop_referrals(step), PART_LEN) if step else ""
+    if not step or not llm.safe_first_aid(step):
+        step = replies.LIVESTOCK_FIRST_AID[lang]
+    return _two_part(step, replies.LIVESTOCK_URGENT[lang], lang, rag.sources(question))
+
+
 def _answer(phone: str, question: str, lang: str) -> Answer:
     canned = _small_talk(question, lang)
     if canned:
         return Answer(canned, "greeting", lang)
 
     urgency = triage.check(question)
-    if urgency == "livestock":
-        return Answer(replies.LIVESTOCK_URGENT[lang], "triage", lang)
     if urgency == "human":
+        # first aid for a poisoned person is never generated
         return Answer(replies.HUMAN_URGENT[lang], "triage", lang)
+    if urgency == "livestock":
+        return _livestock(phone, question, lang)
 
     past = None
     if not terms(question):
@@ -85,7 +109,7 @@ def _answer(phone: str, question: str, lang: str) -> Answer:
             return Answer(replies.ASK_DETAIL[lang], "clarify", lang)
 
     urgent = urgency == "crop"
-    footer = replies.FOOTER[("urgent" if urgent else triage.topic(question), lang)]
+    footer = replies.FOOTER[(triage.topic(question), lang)]
     sources = rag.sources(question)
 
     if not urgent:
@@ -110,6 +134,8 @@ def _answer(phone: str, question: str, lang: str) -> Answer:
     chunks = rag.search(query)
     body = llm.reply(question, past, chunks, lang, urgent=urgent)
     body = sanitize(llm.drop_referrals(body)) if body else ""
+    if body and urgent:
+        return _two_part(sanitize(body, PART_LEN), replies.CROP_URGENT[lang], lang, sources)
     if body:
         text = with_footer(body, footer)
         # an unsure answer is not worth repeating: the next farmer gets a fresh try

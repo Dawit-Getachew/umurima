@@ -22,9 +22,15 @@ fail-safe cannot be talked out of firing.
 
 | Case | Example | Response |
 |---|---|---|
-| Animal dying, poisoned, bitten, or sick with a danger sign | "My cow is not eating and has fever", "Inka yanjye irapfa" | Fixed reply: call the sector vet today; isolate the animal, give water and shade, no old drugs; do not eat or sell meat from an animal that died sick. |
-| Person poisoned or bitten | "My child drank pesticide" | Fixed reply: health centre now or call 912; wash skin, remove clothes, bring the label. |
-| Crops dying or a problem spreading | "My beans are dying everywhere in the field" | Model names the likely cause and one safe step, then "report it today". If the model is down, a fixed reply. |
+| Animal dying, poisoned, bitten, or sick with a danger sign | "My cow is not eating and has fever", "Inka yanjye irapfa" | Two SMS. **1/2:** the likely cause from the notes and one safe step (isolation, shade, water, checking for ticks). **2/2, fixed:** call the sector vet today; no old drugs; do not eat or sell meat from an animal that died sick. |
+| Person poisoned or bitten | "My child drank pesticide" | One fixed SMS, escalation first: health centre now or call 912; wash skin, remove clothes, bring the label. |
+| Crops dying or a problem spreading | "My beans are dying everywhere in the field" | Two SMS. **1/2:** the likely cause and one safe step. **2/2, fixed:** report it today to the Farmer Promoter or agronomist; do not move plants or tools to other fields. |
+
+The first SMS for an animal is generated, so code checks it. Any mention of a drug,
+injection, dose, vaccine, remedy or any number replaces it with a fixed safe step,
+and so does a model failure. Treatment is the vet's decision, and the second SMS,
+which sends the farmer to the vet, is never generated. A poisoned person never gets
+generated first aid: the wrong step, such as inducing vomiting, can kill.
 
 Questions about prevention ("how do I prevent ticks?") are deliberately not escalated,
 so routine questions still get an answer. Fixed replies exist in English and

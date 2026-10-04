@@ -19,8 +19,9 @@ def model(monkeypatch):
     """Stand-in for the LLM that records every call."""
     calls = []
 
-    def fake(question, history, chunks, lang, urgent=False):
-        calls.append({"question": question, "urgent": urgent, "chunks": chunks})
+    def fake(question, history, chunks, lang, urgent=False, first_aid=False):
+        calls.append({"question": question, "urgent": urgent, "first_aid": first_aid,
+                      "chunks": chunks})
         return fake.answer
 
     fake.answer = "Mulch the soil and plant short duration varieties."
@@ -40,17 +41,35 @@ def test_language_detection():
     assert language("Inka yanjye irwaye") == "rw"
 
 
-def test_dying_cow_gets_fixed_escalation_without_model(model):
-    _, calls = model
+def test_dying_cow_gets_a_first_step_then_the_fixed_escalation(model):
+    fake, calls = model
+    fake.answer = "This may be East Coast fever. Keep her in the shade and check for ticks."
     out = ask("My cow is dying and not eating")
     assert out.source == "triage"
-    assert out.text == replies.LIVESTOCK_URGENT["en"]
-    assert calls == []
+    assert calls[0]["first_aid"] is True
+    assert out.parts == [f"(1/2) {fake.answer}", f"(2/2) {replies.LIVESTOCK_URGENT['en']}"]
 
 
 def test_dying_cow_in_kinyarwanda(model):
+    fake, _ = model
+    fake.answer = "Shyira inka mu gicucu, uyihe amazi meza."
     out = ask("Inka yanjye irapfa, nkore iki?")
-    assert out.text == replies.LIVESTOCK_URGENT["rw"]
+    assert out.parts[1] == f"(2/2) {replies.LIVESTOCK_URGENT['rw']}"
+
+
+def test_first_aid_naming_a_drug_or_dose_is_replaced(model):
+    fake, _ = model
+    fake.answer = "Inject 10 ml of oxytetracycline into the neck."
+    out = ask("My goat is sick and has diarrhea", phone="+250788000012")
+    assert out.parts[0] == f"(1/2) {replies.LIVESTOCK_FIRST_AID['en']}"
+
+
+def test_first_aid_when_the_model_is_down(model):
+    fake, _ = model
+    fake.answer = None
+    out = ask("My chickens are dying", phone="+250788000013")
+    assert out.parts == [f"(1/2) {replies.LIVESTOCK_FIRST_AID['en']}",
+                         f"(2/2) {replies.LIVESTOCK_URGENT['en']}"]
 
 
 def test_prevention_question_is_not_an_emergency():
@@ -63,10 +82,16 @@ def test_pesticide_poisoning_goes_to_health_centre(model):
 
 
 def test_dying_crop_is_answered_then_escalated(model):
-    _, calls = model
+    fake, calls = model
     out = ask("My maize plants are dying in the whole field")
     assert calls and calls[0]["urgent"] is True
-    assert out.text.endswith(replies.FOOTER[("urgent", "en")])
+    assert out.parts == [f"(1/2) {fake.answer}", f"(2/2) {replies.CROP_URGENT['en']}"]
+
+
+def test_human_poisoning_stays_one_fixed_message(model):
+    _, calls = model
+    out = ask("I sprayed pesticide and now I feel dizzy", phone="+250788000014")
+    assert out.parts == [] and calls == []
 
 
 def test_simple_question_gets_verified_answer_and_footer(model):
@@ -146,9 +171,10 @@ def test_retry_of_same_sms_reuses_answer(model):
 def test_every_fixed_reply_fits_one_sms_pair():
     texts = [*replies.WELCOME.values(), *replies.THANKS.values(), *replies.BUSY.values(),
              *replies.LIVESTOCK_URGENT.values(), *replies.HUMAN_URGENT.values(),
-             *replies.CROP_URGENT.values(), *replies.ASK_DETAIL.values()]
+             *replies.CROP_URGENT.values(), *replies.ASK_DETAIL.values(),
+             *replies.LIVESTOCK_FIRST_AID.values()]
     for text in texts:
-        assert len(text) <= 300, text
+        assert len("(2/2) " + text) <= 300, text
         assert text.isascii()
 
 

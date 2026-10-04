@@ -46,12 +46,13 @@ design: it absorbs retries. Reword the question or wait before repeating it.
 
 | Question | Expected reply |
 |---|---|
-| My cow is not eating and has fever | call the sector vet today |
-| My goats are dying | call the sector vet today |
-| Inka yanjye irapfa (*my cow is dying*) | the same, in Kinyarwanda |
-| My cow drank pesticide | call the sector vet today |
-| My child drank pesticide | health centre now or call 912 |
-| My beans are dying everywhere in the field | model advice, then "report it today" |
+| My cow is not eating and has fever | (1/2) may be a tick-borne disease: shade and clean water; (2/2) call the sector vet today |
+| My goats are dying | (1/2) isolate the sick goats in a clean, dry shed; (2/2) call the vet |
+| My chickens are dying one after another | (1/2) may be Newcastle disease: separate sick birds; (2/2) call the vet |
+| Inka yanjye irapfa (*my cow is dying*) | the same two SMS, in Kinyarwanda |
+| My cow drank pesticide | (1/2) shade and fresh water; (2/2) call the vet |
+| My child drank pesticide | one SMS: health centre now or call 912 |
+| My beans are dying everywhere in the field | (1/2) likely cause and one step; (2/2) report it today |
 
 ## Guardrails
 

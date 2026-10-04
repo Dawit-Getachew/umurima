@@ -26,14 +26,20 @@ BUSY = {
     "rw": "Ihangane, Umurima AI ntiyabashije gusubiza ubu. Ongera ugerageze nyuma gato.",
 }
 
-# Fail-safe for a life at risk: a fixed escalation, never a generated answer.
+# A sick or dying animal gets two SMS: a safe first step (generated from the notes,
+# or this text when the model is down or unsafe), then this fixed escalation, which
+# is never generated.
+LIVESTOCK_FIRST_AID = {
+    "en": "Keep the animal apart from the herd, in the shade, with clean water to drink.",
+    "rw": "Shyira itungo rirwaye ukwaryo mu gicucu, uriha amazi meza yo kunywa.",
+}
+
 LIVESTOCK_URGENT = {
-    "en": "This is urgent. Call your sector veterinary officer today. Until they come: "
-          "keep the animal apart from the herd, give clean water and shade, and do not "
-          "give old drugs. Do not eat or sell meat from an animal that died sick.",
-    "rw": "Ni ikibazo cyihutirwa. Hamagara veterineri w'umurenge wawe uyu munsi. Mu gihe "
-          "ataraza: shyira itungo rirwaye ukwaryo, uriha amazi meza n'igicucu, ntuhe imiti "
-          "ishaje. Ntukarye cyangwa ngo ugurishe inyama z'itungo ryapfuye rirwaye.",
+    "en": "This is urgent. Call your sector veterinary officer today. Do not give old or "
+          "leftover drugs, and do not eat or sell meat from an animal that died sick.",
+    "rw": "Ni ikibazo cyihutirwa. Hamagara veterineri w'umurenge wawe uyu munsi. Ntuhe "
+          "itungo imiti ishaje, kandi ntukarye cyangwa ngo ugurishe inyama z'itungo "
+          "ryapfuye rirwaye.",
 }
 
 HUMAN_URGENT = {
@@ -45,7 +51,8 @@ HUMAN_URGENT = {
           "n'amazi, ukuremo imyenda, ujyane n'icupa ry'umuti.",
 }
 
-# Used only when the model is down while a crop problem is spreading.
+# Second SMS for a crop problem that is killing plants or spreading; on its own when
+# the model is down.
 CROP_URGENT = {
     "en": "This may be a serious, spreading problem. Report it today to your Farmer "
           "Promoter or sector agronomist. Until they check, do not carry plants, soil or "
@@ -62,6 +69,4 @@ FOOTER = {
     ("crop", "rw"): "Ubundi bufasha: umuhinzi mwitozwa cyangwa agronome w'umurenge.",
     ("animal", "en"): "More help: your sector veterinary officer.",
     ("animal", "rw"): "Ubundi bufasha: veterineri w'umurenge.",
-    ("urgent", "en"): "Report it today to your Farmer Promoter or sector agronomist.",
-    ("urgent", "rw"): "Bimenyeshe uyu munsi umuhinzi mwitozwa cyangwa agronome w'umurenge.",
 }

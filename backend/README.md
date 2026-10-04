@@ -18,7 +18,7 @@ Cheapest and safest layer first. Only step 4 needs the internet.
 
 | Step | What it does | Model call |
 |---|---|---|
-| 1. Triage | Rules catch emergencies: a dying or sick animal, a person poisoned by pesticide, plants dying or a problem spreading. Animals and people get a **fixed** escalation reply (vet, health centre, 912). | none |
+| 1. Triage | Rules catch emergencies: a dying or sick animal, a person poisoned by pesticide, plants dying or a problem spreading. Animals and crops get **two SMS**: a safe step from the notes (animal steps naming a drug or dose are replaced by a fixed one), then a **fixed** escalation to the vet or agronomist. A poisoned person gets one fixed reply (health centre, 912). | 1 for animals and crops |
 | 2. Verified answers | 27 reviewed answers to the most common questions (planting dates, spacing, urea on beans, fall armyworm, coffee yield and price...). The same answer every time, so it can be audited in advance. | none |
 | 3. Answer cache | Earlier model answers keyed by the question's intent terms ("When should I plant maize?" = "when to plant maize"), with fuzzy matching. Stored in Postgres and versioned by a hash of the notes, prompt and model, so editing a note retires stale answers. | none |
 | 4. Model | BM25 retrieval over `knowledge/*.md` (Kinyarwanda crop and animal words are mapped to English so they retrieve English notes), plus the farmer's last 6 messages, then OpenRouter (`gemini-3.1-flash-lite`). | 1 |
@@ -74,7 +74,8 @@ the notes.
     POST /sms   {"phone_number": "+2507...", "message": "..."}
              -> {"phone_number": "+2507...", "message": "...",
                  "source": "faq|cache|ai|triage|offline|greeting|clarify|busy",
-                 "language": "en|rw", "sources": ["crops", ...]}
+                 "language": "en|rw", "sources": ["crops", ...],
+                 "messages": ["(1/2) ...", "(2/2) ..."]}   # SMS to send, in order
     GET  /health -> status, database, model, knowledge and cache sizes, answers by source
 
 `/sms` always returns 200: whatever fails, the farmer still gets a reply and a

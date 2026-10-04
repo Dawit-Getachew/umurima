@@ -27,6 +27,22 @@ URGENT_NOTE = (
     "them to report it."
 )
 
+FIRST_AID_NOTE = (
+    "\n\nThis farmer reports a sick, poisoned or dying animal. A second SMS from the "
+    "system tells them to call the veterinary officer today, so do not say that. Name "
+    "the most likely cause from the notes as a possibility, and give ONE safe step to "
+    "take while they wait, such as isolating the animal, shade, clean water, a dry clean "
+    "shed or checking for ticks. Never name a drug, injection, dose, vaccine or home remedy."
+)
+
+# The vet decides treatment. Any first-aid text that names one, or gives a number, is
+# replaced by the fixed step in replies.LIVESTOCK_FIRST_AID.
+_UNSAFE_FIRST_AID = re.compile(
+    r"\d|\b(antibiotic\w*|oxytetracycline|tetracycline|penicillin|ivermectin|albendazole|"
+    r"inject\w*|syringe|dos(e|es|age)|tablet\w*|paracetamol|aspirin|drugs?|medicin\w*|"
+    r"vaccin\w*|deworm\w*|acaricide\w*|pesticide\w*|spray\w*|herb\w*|"
+    r"umuti|imiti|urushinge|inshinge|ikinini|ibinini|urukingo)\b", re.I)
+
 LANGUAGE_NAMES = {"en": "English", "rw": "Kinyarwanda"}
 
 # Referral sentences the model adds despite the prompt; the footer already covers them.
@@ -58,14 +74,19 @@ def drop_referrals(text: str) -> str:
     return joined if len(joined) >= 30 else text.strip()
 
 
+def safe_first_aid(text: str) -> bool:
+    return not _UNSAFE_FIRST_AID.search(text)
+
+
 def reply(question: str, history: list[dict], chunks: list[str], language: str,
-          urgent: bool = False) -> str | None:
+          urgent: bool = False, first_aid: bool = False) -> str | None:
     """The model's answer, or None when no model could answer."""
     key = os.getenv("OPENROUTER_API_KEY")
     if not key:
         return None
     notes = "\n\n".join(chunks) or "No notes available for this question."
-    messages = [{"role": "system", "content": SYSTEM_PROMPT + (URGENT_NOTE if urgent else "")}]
+    note = FIRST_AID_NOTE if first_aid else URGENT_NOTE if urgent else ""
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + note}]
     messages += history
     messages.append({
         "role": "user",

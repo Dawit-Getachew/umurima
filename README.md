@@ -33,7 +33,7 @@ needs a language model:
 
 | # | Layer | What it does |
 |---|---|---|
-| 1 | Triage | Rules detect emergencies: a dying or poisoned animal, a person poisoned by pesticide, crops dying or a problem spreading. Life-at-risk cases get a fixed reply that sends the farmer to a vet or health centre. |
+| 1 | Triage | Rules detect emergencies: a sick, dying or poisoned animal, a person poisoned by pesticide, crops dying or a problem spreading. Animals and crops get two SMS: a safe step to take now, then a fixed escalation to the vet or agronomist. A poisoned person gets one fixed reply: health centre now. |
 | 2 | Verified answers | 27 reviewed answers to the most common questions, returned verbatim. |
 | 3 | Answer cache | Earlier model answers, matched on the question's intent rather than its exact wording. Persisted, and invalidated automatically when the knowledge base or prompt changes. |
 | 4 | Retrieval + LLM | BM25 over the agronomy notes in `backend/knowledge/`, plus the farmer's last six messages, sent to a small hosted model. |

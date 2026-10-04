@@ -29,6 +29,9 @@ class SmsOut(BaseModel):
     source: str = "ai"
     language: str = "en"
     sources: list[str] = []
+    # The SMS to send, in order. Urgent replies are split in two; `message` joins them
+    # for gateways that send a single SMS.
+    messages: list[str] = []
 
 
 @app.post("/sms", response_model=SmsOut)
@@ -39,11 +42,13 @@ def sms(request: SmsIn) -> SmsOut:
     except Exception:
         # whatever failed, the farmer still gets a reply and a person to ask
         log.exception("Answer pipeline failed for %s", phone)
-        return SmsOut(phone_number=phone, message=replies.BUSY["en"], source="busy")
+        return SmsOut(phone_number=phone, message=replies.BUSY["en"], source="busy",
+                      messages=[replies.BUSY["en"]])
     log.info("%s [%s/%s] %r -> %r", phone, result.source, result.language,
              request.message[:80], result.text[:80])
     return SmsOut(phone_number=phone, message=result.text, source=result.source,
-                  language=result.language, sources=result.sources)
+                  language=result.language, sources=result.sources,
+                  messages=result.parts or [result.text])
 
 
 @app.get("/health")
