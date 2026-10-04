@@ -140,3 +140,8 @@ Development Board (RAB), MINAGRI and NAEB. The vendored SMS plugin in
 [telephony](https://github.com/shounakmulay/Telephony) (MIT).
 
 Team: CMU-Africa bootcamp, Group 7.
+
+## License
+
+[MIT](LICENSE). The vendored `telephony` plugin keeps its own MIT license
+(`sms-gateway/packages/telephony/LICENSE`).
