@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx
+rank-bm25
+psycopg[binary]
+python-dotenv
+pytest
