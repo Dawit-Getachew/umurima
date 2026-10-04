@@ -10,6 +10,8 @@ farmer needs no smartphone, no data bundle and no app.
 Built for the Hack-Nation × World Bank *Small AI for Development* challenge
 (agriculture track), October 2026.
 
+**Project brief (PDF, 4 pages):** [docs/umurima-ai-brief.pdf](docs/umurima-ai-brief.pdf)
+
 ## Why SMS
 
 78% of Rwandan agricultural households own a mobile phone, but only 9% own a
@@ -53,7 +55,7 @@ backend/        FastAPI service: triage, verified answers, cache, retrieval, LLM
   knowledge/    agronomy notes that answers are grounded in
   tests/
 sms-gateway/    Flutter (Android) SMS relay: store-and-forward queue and operator dashboard
-docs/           architecture, responsible AI, data sources, demo script
+docs/           project brief (PDF), architecture, responsible AI, data sources, demo script
 ```
 
 ## Getting started
